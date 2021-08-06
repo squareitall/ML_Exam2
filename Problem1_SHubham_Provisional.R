@@ -79,8 +79,11 @@ ggplot(rent_clsa, aes(x=factor(class_a),y=value,fill=factor(class_a)))+
 
 #Class A seems to be more discriminatory when ut comes to determimne prices
 
-rent_clsa_gr=melt(df[,c('Rent','class_a','green_rating')],id.vars=c('class_a','green_rating'))
+ggplot(df, aes(x=factor(green_rating),y=Rent,fill=factor(class_a)))+
+  geom_boxplot() 
 
+rent_clsa_gr=melt(df[,c('Rent','class_a','green_rating')],id.vars=c('class_a','green_rating'))
+#Same thing
 ggplot(rent_clsa_gr, aes(x=factor(green_rating),y=value,fill=factor(class_a)))+
   geom_boxplot() +facet_wrap(~variable)
 
