@@ -49,19 +49,23 @@ else{
 }
   }}
   
+df_filt=data.frame(sym=lt_syms,var=lt_var,num_obs=obs)
 
+if (length(skip)>0){
+  df_filt=data.frame(sym=lt_syms[-skip],var=lt_var,num_obs=obs)
+  }
 
-df_filt=data.frame(sym=lt_syms[-skip],var=lt_var,num_obs=obs)
 
 df_final=subset(df_filt,df_filt$num_obs==max(df_filt$num_obs))
 
 dff=df_final[order(df_final$var,decreasing=TRUE),]
 
 
-
+dff=subset(dff,dff$var>0)
 syms=c(tail(dff,2)$sym,head(dff,3)$sym)
 
-mystocks = c("WMT", "TGT", "XOM", "MRK", "JNJ")
+
+mystocks = c("BIB", "BSCL", "BNDX", "BIS", "FBZ")
 mystocks=syms
 myprices = getSymbols(mystocks, from = "2016-01-01")#,env=NULL)
 
@@ -72,8 +76,8 @@ myprices = getSymbols(mystocks, from = "2016-01-01")#,env=NULL)
 
 # Combine all the returns in a matrix
 all_returns = cbind(ClCl(BIB),
-                     ClCl(WOOD),
-                     ClCl(XT),
+                     ClCl(BSCL),
+                     ClCl(BNDX),
                      ClCl(BIS),
                      ClCl(FBZ)
                      )
@@ -108,13 +112,15 @@ total_wealth
 total_wealth = 10000
 weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
 holdings = weights * total_wealth
-n_days = 10  # capital T in the notes
-wealthtracker = rep(0, n_days) # Set up a placeholder to track total wealth
+n_days = 20  
+wealthtracker = rep(0, n_days) 
 for(today in 1:n_days) {
-  return.today = resample(all_returns, 1, orig.ids=FALSE)  # sampling from R matrix in notes
+  return.today = resample(all_returns, 1, orig.ids=FALSE) 
   holdings = holdings + holdings*return.today
   total_wealth = sum(holdings)
   wealthtracker[today] = total_wealth
+  holdings = weights * total_wealth
+  cat(holdings,'\n')
 }
 total_wealth
 plot(wealthtracker, type='l')
@@ -127,13 +133,14 @@ sim1 = foreach(i=1:5000, .combine='rbind') %do% {
   total_wealth = initial_wealth
   weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
   holdings = weights * total_wealth
-  n_days = 10
+  n_days = 20
   wealthtracker = rep(0, n_days)
   for(today in 1:n_days) {
     return.today = resample(all_returns, 1, orig.ids=FALSE)
     holdings = holdings + holdings*return.today
     total_wealth = sum(holdings)
     wealthtracker[today] = total_wealth
+    holdings = weights * total_wealth
   }
   wealthtracker
 }
@@ -154,4 +161,102 @@ quantile(sim1[,n_days]- initial_wealth, prob=0.05)
 
 
 
+
+##Portfolio 2
+syms=c(tail(dff,2)$sym,
+       head(dff,3)$sym,
+       sample(subset(dff, var <= quantile(var, 0.55) & var >= quantile(var, 0.45)),5)$sym
+       )
+
+mystocks=syms
+myprices = getSymbols(mystocks, from = "2016-01-01")#,env=NULL)
+
+all_returns = cbind(ClCl(BIB),
+                    ClCl(BSCL),
+                    ClCl(BNDX),
+                    ClCl(BIS),
+                    ClCl(FBZ),
+                    ClCl(DVY),
+                    ClCl(ALTY),
+                    ClCl(DDIV),
+                    ClCl(AAXJ),
+                    ClCl(FEX)
+)
+head(all_returns)
+
+all_returns = as.matrix(na.omit(all_returns))
+
+boxplot(all_returns)
+# Compute the returns from the closing prices
+pairs(all_returns)
+
+# Sample a random return from the empirical joint distribution
+# This simulates a random day
+return.today = resample(all_returns, 1, orig.ids=FALSE)
+
+# Update the value of your holdings
+# Assumes an equal allocation to each asset
+total_wealth = 10000
+my_weights = rep(0.1,10)
+holdings = total_wealth*my_weights
+holdings = holdings*(1 + return.today)
+
+# Compute your new total wealth
+holdings
+total_wealth = sum(holdings)
+total_wealth
+
+# Now loop over two trading weeks
+# let's run the following block of code 5 or 6 times
+# to eyeball the variability in performance trajectories
+
+## begin block
+total_wealth = 10000
+weights = rep(0.1,10)
+holdings = weights * total_wealth
+n_days = 20  
+wealthtracker = rep(0, n_days) 
+for(today in 1:n_days) {
+  return.today = resample(all_returns, 1, orig.ids=FALSE) 
+  holdings = holdings + holdings*return.today
+  total_wealth = sum(holdings)
+  wealthtracker[today] = total_wealth
+  holdings = weights * total_wealth
+  cat(holdings,'\n')
+}
+total_wealth
+plot(wealthtracker, type='l')
+## end block
+
+# Now simulate many different possible futures
+# just repeating the above block thousands of times
+initial_wealth = 10000
+sim1 = foreach(i=1:5000, .combine='rbind') %do% {
+  total_wealth = initial_wealth
+  weights = rep(0.1,10)
+  holdings = weights * total_wealth
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = resample(all_returns, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+    holdings = weights * total_wealth
+  }
+  wealthtracker
+}
+
+# each row is a simulated trajectory
+# each column is a data
+head(sim1)
+hist(sim1[,n_days], 25)
+
+# Profit/loss
+mean(sim1[,n_days])
+mean(sim1[,n_days] - initial_wealth)
+hist(sim1[,n_days]- initial_wealth, breaks=30)
+
+# 5% value at risk:
+quantile(sim1[,n_days]- initial_wealth, prob=0.05)
 
