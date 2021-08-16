@@ -1,0 +1,1408 @@
+---
+title: "Exam"
+author: "SHUBHAM SINGH"
+date: "08/03/2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  word_document: default
+---
+
+```{r setup_parent, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#install.packages('tinytex')
+#tinytex::install_tinytex()
+#cat('HI')
+```
+```{r setup, include=FALSE}
+```
+
+
+\newpage
+
+# Visual story telling part 1: green buildings
+
+We started out with the analysis of the Stat Guru's Work.
+
+```{r ans a-1, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+library(ggplot2)
+
+library(Rcpp)
+library(reshape2)
+
+rm(list=ls())
+setwd('D:/stat_wk/part_2')
+
+df=read.csv('data/greenbuildings.csv')
+
+
+
+
+#Analysing the stats GURU's work
+par(mfrow=c(1,2))
+boxplot(subset(df,df$green_rating==1)$Rent,main='Values of rent for houses with green rating as yes')
+boxplot(subset(df,df$green_rating==0)$Rent,main='Values of rent for houses with green rating as no')
+
+cat(median(subset(df,df$green_rating==1)$Rent),median(subset(df,df$green_rating==0)$Rent))
+
+summary(lm(Rent~green_rating,data=df))
+
+```
+
+1) The stat Guru made his conclusion on the basis of point estimate statistic, 
+(median) of two subsets of data, and didn't even consider the variation
+in the rent price of two subsets for his conclusion remarks.
+
+2) There is clear overlapping in rent price for two sets of data; 
+
+One with the green rating and the other without the one
+
+3) Possibly this variation is due to other factors that need to be analysed 
+for precisely deciding what other factors control the rent price
+
+
+
+- The SLR model trained using only the indicator variable 
+(whether the building is green or not) is not able to explain the 
+variation in rent prices (adj r2 is quite low)
+
+- We surely need to consider other variables
+
+
+## Analysis of individual variable
+```{r ans a-2, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+df_cor=as.data.frame(cor(df,method='pearson'))
+
+col_tbu=names(df)[order(df_cor$Rent,decreasing=TRUE)][2:11]
+# par(mfrow=c(round(col/5,0),5))
+par(mfrow=c(2,5))
+for (i in col_tbu){
+  plot(df[,c(i)],df$Rent,ylab='Rent',xlab=i)
+}
+
+
+
+# Set of Simple Linear regressions
+coeff_pre=c()
+pval_pre=c()
+
+
+for (pre in names(df)){
+  if (pre =='Rent')
+  {next}
+  # cat(pre,'\n')
+  
+  temp_pre=df[,pre]
+  model_pre=lm(Rent~temp_pre,data=df)
+  
+  sum_pre=summary(model_pre)
+  
+  coeff_pre=c(coeff_pre,model_pre$coefficients['temp_pre'])
+  pval_pre=c(pval_pre,sum_pre$coefficients[2,4])
+  
+}
+
+df_pre=data.frame(predictors=names(df)[-5],coeff=coeff_pre,p_vals=pval_pre)
+
+#sorting wrt absolute values of coefficients
+df_pre=df_pre[order(abs(df_pre$coeff),decreasing=TRUE),]
+print(df_pre)
+
+```
+
+## OBSERVATIONS
+
+1) Individual predictor analysis suggest that the rent to an appreciable extent
+depends on the value of cost of electricity, class a and many other variables
+
+2) These variables can have same value in two different subgroups
+(green not green) or can have remarkably different values inside same subset
+
+
+## Analysis of Class A variable, independent and combination with Green rating 
+
+```{r ans a-3, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+rent_clsa=melt(df[,c('Rent','class_a')],id.vars='class_a')
+
+ggplot(rent_clsa, aes(x=factor(class_a),y=value,fill=factor(class_a)))+
+  geom_boxplot() +facet_wrap(~variable)
+
+rent_clsa_gr=melt(df[,c('Rent','class_a','green_rating')],id.vars=c('class_a','green_rating'))
+
+temp_plot=ggplot(rent_clsa_gr, aes(x=factor(green_rating),y=value,fill=factor(class_a)))+
+  geom_boxplot() +facet_wrap(~variable)
+
+temp_plot + labs(x = "green_rating", y = "Rent")
+
+# ggplot(df, aes(x=factor(green_rating),y=Rent,fill=factor(class_a)))+
+#   geom_boxplot() 
+
+```
+
+
+## OBSERVATIONS
+
+1) Class A seems to be more discriminatory when it comes to determine prices
+
+
+2) Within each subset of green rating class, class_a variable is able to
+differentiate between rent prices
+It can be a strong confounding variable
+
+
+## Analysis of Electricity cost variable, in combination with Green rating 
+
+```{r ans a-4, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+ggplot(df, aes(x=Electricity_Costs,y=Rent))+
+  geom_point()+facet_wrap(~green_rating)
+
+```
+
+1) Within both kinds of houses rent increases with electricity cost
+
+
+-There is a possibility that other predictors help to determine green_rating variable.
+
+-Hence the variation in rent prices withing green_rating is because of those secondary (hidden) predictors
+
+-These hidden predictors can be strong candidates for the confounding variables
+
+
+
+## Estimating the presence of confounding variable
+
+
+```{r ans a-5, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+log_model=glm(factor(green_rating)~ Gas_Costs,data=df,family=binomial)
+summary(log_model)
+
+coeff_pre=c()
+pval_pre=c()
+aic_pre=c()
+
+for (pre in names(df)){
+  if (pre =='green_rating' | pre=='Rent')
+  {next}
+  # cat(pre,'\n')
+  
+  temp_pre=df[,pre]
+  model_pre=glm(factor(green_rating)~ temp_pre,data=df,family=binomial)
+  
+  sum_pre=summary(model_pre)
+  
+  coeff_pre=c(coeff_pre,model_pre$coefficients['temp_pre'])
+  pval_pre=c(pval_pre,sum_pre$coefficients[2,4])
+  aic_pre=c(aic_pre,sum_pre$aic)
+  
+}
+
+df_pre=data.frame(predictors=names(df)[-c(5,14)],coeff=coeff_pre,p_vals=pval_pre)#,aic=aic_pre)
+
+df_pre=df_pre[order(abs(df_pre$p_vals),decreasing=FALSE),]
+print(df_pre)
+```
+
+## OBSERVATIONS
+
+1) Predictors like class_a,age and class_b seems capable of 
+determining green_rating for households
+
+2) Additionally class_a, class_b based variables demonstrated 
+appreciable amount of association with rent prices (from our previous analysis)
+
+3) Class a from our combination of analysis, seems to be a foremost contender 
+of being a confounding variables for relationship present between green_rating 
+and rent price 
+
+
+
+
+\newpage 
+
+# Visual story telling part 2: flights at ABIA
+
+-We started with creating an indicator variable stating whether the 
+specific flight started from and ended at Austin
+
+```{r ans b-1, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+library(ggplot2)
+library(reshape2)
+
+rm(list=ls())
+setwd('D:/stat_wk/part_2')
+
+df=read.csv('data/ABIA.csv')
+
+df$orig_aus=ifelse(df$Origin=='AUS','from_austin','to_austin')
+table(df$orig_aus)
+
+library(EBImage)
+
+
+cat('Location of origin of flights arriving at Austin')
+img = readImage("Destination_Austin_plot.png")
+display(img, method = "raster")
+
+cat('Location of destination of flights departing from Austin')
+img = readImage("Origin_Austin_plot.png")
+display(img, method = "raster")
+
+```
+
+
+
+## Analysing the departing and landing flights with other catehgorical features
+
+```{r ans b-2, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+ggplot(df,aes(x=as.factor(Distance),fill=as.factor(orig_aus)))+
+  geom_bar() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# 
+ggplot(df,aes(x=as.factor(DayofMonth),fill=as.factor(orig_aus)))+
+  geom_bar() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+
+ggplot(df,aes(x=as.factor(DayOfWeek),fill=as.factor(orig_aus)))+
+  geom_bar()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+## OBSERVATIONS
+
+1)Short distance flights are more in number as compared to long distance flights
+However, the arriving and departing flights are evenly distributed for all range
+of distances
+
+
+2) The number of incoming and outgoing flights are uniformly distributed 
+across all days of the month
+
+3) The number of flights are less on weekends 
+
+
+## ANALYSING flights with respective delay times
+```{r ans b-3, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+ggplot(df,aes(x=ArrDelay,fill=as.factor(orig_aus)))+
+  geom_bar() + geom_vline(aes(xintercept=0),col='black',size=1)
+
+ggplot(df,aes(x=DepDelay,fill=as.factor(orig_aus)))+
+  geom_bar() + geom_vline(aes(xintercept=0),col='black',size=1)
+
+
+arr_dest=table(subset(df, df$DepDelay>quantile(na.omit(df$DepDelay),0.99) & df$orig_aus =='from_austin')$Dest)
+cat('Flights departed to following cities have departure delay of more than' ,quantile(na.omit(df$DepDelay),0.99))
+print(arr_dest)
+
+
+dep_dest=table(subset(df, df$DepDelay>quantile(na.omit(df$ArrDelay),0.99) & df$orig_aus =='to_austin')$Origin)
+cat('Flights arriving to following cities have arrival delay of more than' ,quantile(na.omit(df$DepDelay),0.99))
+print(dep_dest)
+```
+
+## OBSERVATIONS
+1) Flights arriving to Austin seems to arrive early, arrival delay time is 
+usually less than 0
+
+
+-Flights having high order of delay seems to be arriving majorly from 
+Chicago ORD,  also Dulles IAD and Atlanta ATl airports
+
+2) Flights departing from Austin, comparatively have high Departure delay times
+The delay time is occasionally quite high
+
+-Flights majorly leaving for ATL (Atlanta) has high order of departure delay 
+(0.99 quantile value of departure delay) 
+
+
+\newpage
+# Portfolio MOdelling
+
+We extracted all the ETF associated symbols and then documented 
+their respective returns for the last 5 years
+
+Following, we computed variance of their return for last five years.
+We sub selected those symbols that has been actively (providing return) for 
+the last five years
+
+We created our aggressive, moderate and mixed profiles using 
+the variation score of returns of symbols
+
+
+
+```{r ans c-1, include=FALSE, echo=FALSE, fig.height=10, fig.width=15}
+rm(list=ls())
+library(quantmod)
+library(mosaic)
+library(foreach)
+
+
+
+# 
+# df_sym=stockSymbols()
+# table(df_sym$ETF)
+# 
+# #Selected the ones where ETF is True
+# df_sym=subset(df_sym,df_sym$ETF==TRUE)
+# 
+# summary(df_sym)
+# 
+# #
+# table(df_sym$Financial.Status)
+# df_sym=subset(df_sym,df_sym$Financial.Status=="Normal (Default)")
+# 
+# lt_syms=df_sym[,1]
+# 
+# 
+# lt_var=c()
+# skip=c()
+# obs=c()
+# for (i in 1:length(lt_syms)){
+#   cat(i,'\t')
+#   sym=lt_syms[i]
+#   
+#   tryit = try(getSymbols(sym,from= "2016-01-01",env=NULL))
+#   if(inherits(tryit, "try-error")){
+#     cat('error',i)
+#     skip=c(skip,i)
+#     i = i+1
+#   } else {
+#   
+#   temp_df=as.data.frame(getSymbols(sym,from= "2016-01-01",env=NULL))
+#   if (dim(temp_df)[1]>0){
+#   # adj_df=adjustOHLC(temp_df)#Ask sir about this
+#   
+#   obs=c(obs,dim(temp_df)[1])
+#   ret=ClCl(temp_df)
+#   
+#   temp_ret_var=var(ret[-1])
+#   
+#   lt_var=c(lt_var,temp_ret_var)
+#   }
+# else{
+#   skip=c(skip,i)
+# }
+#   }}
+#   
+# df_filt=data.frame(sym=lt_syms,var=lt_var,num_obs=obs)
+# 
+# if (length(skip)>0){
+#   df_filt=data.frame(sym=lt_syms[-skip],var=lt_var,num_obs=obs)
+#   }
+# 
+# 
+# df_final=subset(df_filt,df_filt$num_obs==max(df_filt$num_obs))
+# 
+# dff=df_final[order(df_final$var,decreasing=TRUE),]
+# 
+# 
+# dff=subset(dff,dff$var>0)
+```
+
+
+
+```{r ans c-2, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+# boxplot(dff$var,main='boxplot of variation of returns for last five years of all the symbols')
+# summary(dff$var)
+```
+
+
+## Aggressive Portfolio ( With high variation)
+
+
+Post sorting (decreasing order) the symbols on the basis of their 
+5 year return variation, we selected the top five symbols for 
+our aggressive portfolio.
+
+```{r ans c-3, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+# syms=c(head(dff,5)$sym)
+
+mystocks = c("BIB", "EWZS", "CNCR", "BIS", "FBZ")
+myprices = getSymbols(mystocks, from = "2016-01-01")
+
+all_returns = cbind(ClCl(BIB),
+                     ClCl(CNCR),
+                     ClCl(EWZS),
+                     ClCl(BIS),
+                     ClCl(FBZ)
+                     )
+#head(all_returns)
+
+all_returns = as.matrix(na.omit(all_returns))
+pairs(all_returns,main='correlation of return of symbols with each other')
+
+
+total_wealth = 100000
+weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+holdings = weights * total_wealth
+n_days = 20  
+wealthtracker = rep(0, n_days) 
+for(today in 1:n_days) {
+  return.today = resample(all_returns, 1, orig.ids=FALSE) 
+  holdings = holdings + holdings*return.today
+  total_wealth = sum(holdings)
+  wealthtracker[today] = total_wealth
+  holdings = weights * total_wealth #Redistributing holdings for each symbol
+  #cat(holdings,'\n')
+}
+plot(wealthtracker, type='l',main='A sample of wealth flow curve for 20 days')
+
+
+
+initial_wealth = 100000
+sim1 = foreach(i=1:5000, .combine='rbind') %do% {
+  total_wealth = initial_wealth
+  weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+  holdings = weights * total_wealth
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = resample(all_returns, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+    holdings = weights * total_wealth
+  }
+  wealthtracker
+}
+
+
+hist(sim1[,n_days], 25)
+
+# Profit/loss
+mean(sim1[,n_days])# samples of final day values
+mean(sim1[,n_days] - initial_wealth)# Jump in monetary terms
+hist(sim1[,n_days]- initial_wealth, breaks=30)
+
+# 5% value at risk:
+cat('stocks used',mystocks)
+cat('5% value at risk',quantile(sim1[,n_days]- initial_wealth, prob=0.05))# 0.05 quantile value for
+#net return at final day(20th) computed over 5000 samples
+
+
+```
+
+
+# Non aggressive portfolio
+
+```{r ans c-4, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+# syms=c(tail(dff,5)$sym)
+
+mystocks=c("BND", "BSCM", "AGZD", "BSCL", "BNDX")
+myprices = getSymbols(mystocks, from = "2016-01-01")
+
+all_returns = cbind(ClCl(BND),
+                     ClCl(BSCM),
+                     ClCl(AGZD),
+                     ClCl(BSCL),
+                     ClCl(BNDX)
+                     )
+#head(all_returns)
+
+all_returns = as.matrix(na.omit(all_returns))
+pairs(all_returns,main='correlation of return of symbols with each other')
+
+
+total_wealth = 100000
+weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+holdings = weights * total_wealth
+n_days = 20  
+wealthtracker = rep(0, n_days) 
+for(today in 1:n_days) {
+  return.today = resample(all_returns, 1, orig.ids=FALSE) 
+  holdings = holdings + holdings*return.today
+  total_wealth = sum(holdings)
+  wealthtracker[today] = total_wealth
+  holdings = weights * total_wealth #Redistributing holdings for each symbol
+  #cat(holdings,'\n')
+}
+plot(wealthtracker, type='l',main='A sample of wealth flow curve for 20 days')
+
+
+
+initial_wealth = 100000
+sim1 = foreach(i=1:5000, .combine='rbind') %do% {
+  total_wealth = initial_wealth
+  weights = c(0.2, 0.2, 0.2, 0.2, 0.2)
+  holdings = weights * total_wealth
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = resample(all_returns, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+    holdings = weights * total_wealth
+  }
+  wealthtracker
+}
+
+
+hist(sim1[,n_days], 25)
+
+# Profit/loss
+mean(sim1[,n_days])# samples of final day values
+mean(sim1[,n_days] - initial_wealth)# Jump in monetary terms
+hist(sim1[,n_days]- initial_wealth, breaks=30)
+
+# 5% value at risk:
+cat('stocks used',mystocks)
+cat('5% value at risk',quantile(sim1[,n_days]- initial_wealth, prob=0.05))
+#net return at final day(20th) computed over 5000 samples
+
+
+```
+
+
+
+```{r ans c-5, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+# syms=c(tail(dff,2)$sym,
+#        head(dff,3)$sym,
+#        sample(subset(dff, var <= quantile(var, 0.55) & var >= quantile(var, 0.45)),5)$sym
+#        )
+
+mystocks=c('BIB','BSCL','BNDX','BIS','FBZ','DVY','ALTY','EEMA','FTC','FEX')
+myprices = getSymbols(mystocks, from = "2016-01-01")#,env=NULL)
+
+all_returns = cbind(ClCl(BIB),
+                    ClCl(BSCL),
+                    ClCl(BNDX),
+                    ClCl(BIS),
+                    ClCl(FBZ),
+                    ClCl(DVY),
+                    ClCl(ALTY),
+                    ClCl(EEMA),
+                    ClCl(FTC),
+                    ClCl(FEX)
+)
+head(all_returns)
+
+all_returns = as.matrix(na.omit(all_returns))
+
+boxplot(all_returns,main='variation of returns of each contributing symbol')
+# Compute the returns from the closing prices
+pairs(all_returns)
+
+# Sample a random return from the empirical joint distribution
+# This simulates a random day
+return.today = resample(all_returns, 1, orig.ids=FALSE)
+
+# Update the value of your holdings
+# Assumes an equal allocation to each asset
+total_wealth = 100000
+my_weights = rep(0.1,10)
+holdings = total_wealth*my_weights
+holdings = holdings*(1 + return.today)
+
+# Compute your new total wealth
+holdings
+total_wealth = sum(holdings)
+total_wealth
+
+# Now loop over two trading weeks
+# let's run the following block of code 5 or 6 times
+# to eyeball the variability in performance trajectories
+
+## begin block
+total_wealth = 100000
+weights = rep(0.1,10)
+holdings = weights * total_wealth
+n_days = 20  
+wealthtracker = rep(0, n_days) 
+for(today in 1:n_days) {
+  return.today = resample(all_returns, 1, orig.ids=FALSE) 
+  holdings = holdings + holdings*return.today
+  total_wealth = sum(holdings)
+  wealthtracker[today] = total_wealth
+  holdings = weights * total_wealth
+  cat(holdings,'\n')
+}
+plot(wealthtracker, type='l')
+## end block
+
+# Now simulate many different possible futures
+# just repeating the above block thousands of times
+initial_wealth = 100000
+sim1 = foreach(i=1:5000, .combine='rbind') %do% {
+  total_wealth = initial_wealth
+  weights = rep(0.1,10)
+  holdings = weights * total_wealth
+  n_days = 20
+  wealthtracker = rep(0, n_days)
+  for(today in 1:n_days) {
+    return.today = resample(all_returns, 1, orig.ids=FALSE)
+    holdings = holdings + holdings*return.today
+    total_wealth = sum(holdings)
+    wealthtracker[today] = total_wealth
+    holdings = weights * total_wealth
+  }
+  wealthtracker
+}
+
+# each row is a simulated trajectory
+# each column is a data
+hist(sim1[,n_days], 25)
+
+# Profit/loss
+mean(sim1[,n_days])
+mean(sim1[,n_days] - initial_wealth)
+hist(sim1[,n_days]- initial_wealth, breaks=30)
+
+# 5% value at risk:
+cat('stocks used',mystocks)
+cat('5% value at risk',quantile(sim1[,n_days]- initial_wealth, prob=0.05))
+
+```
+
+
+
+\newpage
+# MARKET SEGMENTATION
+
+
+
+## Brief Analysis of the data
+```{r ans d-1, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+rm(list=ls())
+setwd('D:/stat_wk/part_2')
+
+df=read.csv('data/social_marketing.csv')
+
+summary(df)
+
+plot(colMeans(df[,-1]),main='avearge number of posts for given category',type='b')
+plot(rowMeans(df[,-1]),main='avearge number of posts by users',type='b')
+
+apply(df[,-1],2,function(r){sum(r>0)})
+plot(apply(df[,-1],2,function(r){sum(r>0)}),main='Number of users who posted about the category',type='b')
+
+```
+
+
+1) There are 7882 turks and 36 categories of items
+
+2) Almost all of the categories get posted on an average 1-2 number of times 
+
+3) There are some users who post more than 3-4 number of posts across all 
+categories. However, mostly users post between 0-2 across all categories.
+
+4) Topics related to categories like current events, health and sports
+got tweeted by more than 3000 users, whereas other topics like fashion 
+and school got rarely covered.
+
+5) We wanted to analyse which segments were closely related. We will be using 
+the user_ids as different features/variables that will nhelp us determine the
+association between all the 36 segments
+
+
+
+## Hierarchial Clustering of the data
+
+Steps -
+1) Transposed the data, in order to analyse association between segments
+2) Created a function providing with three different clustering plots, on the
+basis of association rule for point between two clusters.
+3) Removed categories associated with span and adult based content
+
+
+```{r ans d-2, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+create_clusters=function(d,msg=''){
+  X_scaled=scale(d,center = TRUE,scale = TRUE)
+  dist_X = dist(X_scaled, method='euclidean')
+  
+  hier_avg = hclust(dist_X, method='average')#lab=)
+  hier_min = hclust(dist_X, method='single')
+  hier_max = hclust(dist_X, method='complete')
+  
+  plot(hier_avg, cex=0.8,main=paste0('avg based cluster dendogram',msg))
+  plot(hier_min, cex=0.8, main=paste0('min based cluster dendogram',msg))
+  plot(hier_max, cex=0.8,main=paste0('max based cluster dendogram',msg))
+  
+}
+
+X=df[,-c(1,36,37)]
+
+X=t(X)
+create_clusters(X,msg=' without spam and adult based columns')
+```
+
+## OBSERVATIONS
+
+1) In all three kinds of associations used, chatter seems to be not unassociated
+and different(distance id large from other clusters) from other categories
+We decided to remove it from our further analysis
+
+2) Minimum based association creates a large zone, comprising of 
+all the categories.
+There can be at least one turk that has shared interest in two categories, 
+therefore we can avoid using minimum association rule
+
+3) Some categories like nutrition and fitness, family parenting school seems to 
+be associated together in max based association rule, which make sense.
+Extreme turks of such cluster pars can be associated with each other.
+
+
+
+
+
+## WITHOUT CHATTER
+
+```{r ans d-3, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+X=df[,-c(1,2,36,37)]
+
+X=t(X)
+create_clusters(X,msg=' without chatter')
+
+```
+## OBSERVATIONS
+
+1) Upon removing the "chatter" category and running hierarchical clustering on the others,
+we see that in the average based approach, there is a zone towards the right end with a significant number of clusters like businesses, sports, music, outdoors, home and gardening with crafts. Some clusters like online gaming with college or news with politics or beauty with fashion or parenting with school which were seen in the previous run are present here as well.
+
+2) In the minimum based approach, we see that photo sharing or health nutrition does not seem to be associated with others which was also seen in the average approach.
+Online gaming and university are together and there is again a large zone with most of the clusters like businesses, computers, crafts and home or parenting and schools close to each other.
+
+3) The maximum based approach gives a relatively more spread-out graph of the clustering maintaining the clusters like parenting with schools or gaming with college or tv with art and others. Moreover health nutrition and personal fitness are clubbed into one cluster and they are quite separated from the rest.
+
+
+
+
+## SUBSET of TURKS
+
+-We though of removing the turks who either post many tweets or who post less 
+number of tweets
+
+-Reliability on their tweets is low, especially while creating 
+clusters of segments
+
+-They act as outlier points lying on individual axes (people with less tweets)
+which will only distort the structure of association rules
+
+-We used quantile based approach to perform this experiment
+
+```{r ans d-4, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+df$num_posts=rowSums(df[,-c(1)])
+
+lower_lim=0.01
+upper_lim=0.99
+mask_low=(df$num_posts > quantile(df$num_posts, lower_lim))
+mask_up=(df$num_posts < quantile(df$num_posts, upper_lim))
+
+df_sub=df[(mask_low & mask_up),]
+df_sub=df_sub[,-c(38)]
+
+X=t(df_sub[,-c(1,2,36,37)])
+
+create_clusters(X,msg=' with subset of turks')
+
+```
+## OBSERVATIONS
+
+We see that there is a reduction of 200 turks after removing the top and bottom 1 percent.
+
+We receive an overall similar plot like the one received without chatters.
+The maximum based approach cluster is the most spread-out with the same clusters as seen previously.
+The minimum and the average approach clusters have a zone with significant number of clusters in it.
+Some clusters like news with politics or food with religion which occur together in the avg based approach get separated out in the min based approach.
+
+
+
+
+\newpage
+
+# AUTHOR ATTRIBUTION
+
+##APPROACH 1 - PCA and RandomForest BAsed
+```{r ans e-1, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+# rm(list=ls())
+# 
+# library(tm)
+# 
+# readerPlain = function(fname){
+#   readPlain(elem=list(content=readLines(fname)), 
+#             id=fname, language='en') }
+# 
+# ## Rolling two directories together into a single corpus
+# author_dirs = Sys.glob('data/ReutersC50/C50train/*')
+# author_dirs = author_dirs[1:50]
+# file_list = NULL
+# labels = NULL
+# for(author in author_dirs) {
+#   author_name = substring(author, first=29)
+#   files_to_add = Sys.glob(paste0(author, '/*.txt'))
+#   file_list = append(file_list, files_to_add)
+#   labels = append(labels, rep(author_name, length(files_to_add)))
+# }
+# 
+# # Need a more clever regex to get better names here
+# all_docs = lapply(file_list, readerPlain) 
+# names(all_docs) = file_list
+# names(all_docs) = sub('.txt', '', names(all_docs))
+# 
+# 
+# my_corpus = Corpus(VectorSource(all_docs))
+# 
+# # Preprocessing
+# my_corpus = tm_map(my_corpus, content_transformer(tolower)) # make everything lowercase
+# my_corpus = tm_map(my_corpus, content_transformer(removeNumbers)) # remove numbers
+# my_corpus = tm_map(my_corpus, content_transformer(removePunctuation)) # remove punctuation
+# my_corpus = tm_map(my_corpus, content_transformer(stripWhitespace)) ## remove excess white-space
+# my_corpus = tm_map(my_corpus, content_transformer(removeWords), stopwords("SMART"))
+# 
+# DTM = DocumentTermMatrix(my_corpus)
+# 
+# DTM = removeSparseTerms(DTM, 0.985)
+# 
+# 
+# tfidf = weightTfIdf(DTM)
+# 
+# 
+# #Final X
+# X = as.matrix(tfidf)
+# summary(colSums(X))
+# 
+# dim(X)
+# 
+# scrub_cols = which(colSums(X) == 0)
+# X = X[,-scrub_cols]
+# 
+# 
+# 
+# words_from_trainset=colnames(X)
+# #We will use setdiff to find words present in test set but not in the train set
+# #setdiff(c('access','chips','consumers'),words_from_trainset)
+# 
+# #Lets create a pseudo word assigning quantile value of 0.2 (we will select only non zero values) across rows to that column
+# 
+# 
+# quant_2_non_zero=function(r){
+#   quantile(r[r!=0],0.2)
+# }
+# X=cbind(X,pseudo_word=apply(X,1,quant_2_non_zero))
+# 
+# 
+# pca_ = prcomp(X, scale=TRUE)
+# 
+# # summary(pca_) 
+# # plot(pca_)
+# 
+# imp_pca=pca_$sdev^2 / sum(pca_$sdev^2)
+# imp_pca=as.matrix(cumsum(imp_pca))
+# 
+# plot(imp_pca,main = 'Cummulative sum of variation explained using variables' )
+# 
+# #We will require at least 500 words to explain 60 percent of the variation
+# 
+# 
+# 
+# 
+# # pca_$rotation[c(1:10,2520),1:10]
+# # rot_transformer_10=pca_$rotation[,1:10]
+# 
+# rot_transformer_500=pca_$rotation[,1:500]
+# 
+# 
+# X_train=pca_$x[,1:500]
+# # y_train=c(rep(0,50),rep(1,50),rep(2,50))
+# 
+# 
+# ###MODEL
+# library(randomForest)
+# library(gbm)
+# 
+# #Formulation of target variable
+# aut_temp=c()
+# for (i in seq(1:50)){
+#   aut_temp=c(aut_temp,rep(i,50))
+# }
+# # plot(aut_temp)
+# 
+# ddf=cbind(X_train,author=aut_temp)
+# ddf=as.data.frame(ddf)
+# model=randomForest(as.factor(author)~.,data=ddf,ntree=50,maxnodes=15,mtry=(ncol(ddf)*2)/3)
+# sum(diag(model$confusion))
+# 
+# # model_1=gbm(as.factor(author)~.,data=ddf)#,distribution='multinomial',
+#            # n.trees=10,shrinkage=.2)
+# 
+# #########################
+# #TEST SET
+# 
+# ####################################
+# 
+# 
+# 
+# library(tm)
+# 
+# readerPlain = function(fname){
+#   readPlain(elem=list(content=readLines(fname)), 
+#             id=fname, language='en') }
+# 
+# ## Rolling two directories together into a single corpus
+# author_dirs = Sys.glob('data/ReutersC50/C50test/*')
+# author_dirs = author_dirs[1:50]
+# file_list = NULL
+# labels = NULL
+# for(author in author_dirs) {
+#   author_name = substring(author, first=29)
+#   files_to_add = Sys.glob(paste0(author, '/*.txt'))
+#   file_list = append(file_list, files_to_add)
+#   labels = append(labels, rep(author_name, length(files_to_add)))
+# }
+# 
+# 
+# all_docs = lapply(file_list, readerPlain) 
+# names(all_docs) = file_list
+# names(all_docs) = sub('.txt', '', names(all_docs))
+# 
+# 
+# my_corpus = Corpus(VectorSource(all_docs))
+# 
+# # Preprocessing
+# my_corpus = tm_map(my_corpus, content_transformer(tolower)) # make everything lowercase
+# my_corpus = tm_map(my_corpus, content_transformer(removeNumbers)) # remove numbers
+# my_corpus = tm_map(my_corpus, content_transformer(removePunctuation)) # remove punctuation
+# my_corpus = tm_map(my_corpus, content_transformer(stripWhitespace)) ## remove excess white-space
+# my_corpus = tm_map(my_corpus, content_transformer(removeWords), stopwords("SMART"))
+# 
+# DTM = DocumentTermMatrix(my_corpus)
+# 
+# # DTM = removeSparseTerms(DTM, 0.985)
+# 
+# 
+# 
+# #Changes
+# tfidf_test = weightTfIdf(DTM)
+# 
+# 
+# 
+# ###Set manipulation
+# length(intersect(words_from_trainset,colnames(tfidf_test)))
+# 
+# length(words_from_trainset)
+# 
+# 
+# bth=intersect(words_from_trainset,colnames(tfidf_test))#2260 for 50 authors
+# not_in_train=setdiff(colnames(tfidf_test),bth)
+# 
+# 
+# wrds_tbu=c(bth,'pseudo_word')
+# pca_transformer_tbu=rot_transformer_500[wrds_tbu,]#+ pseudo_word
+# 
+# 
+# 
+# X_test=as.matrix(tfidf_test[,bth])
+# 
+# 
+# mean_non_zer_diff_set=function(r){
+#   mean(r[r!=0])
+# }
+# 
+# X_test=cbind(X_test,test_pseudo=apply(tfidf_test[,not_in_train],1,mean_non_zer_diff_set))
+# 
+# 
+# y_test=aut_temp#repeat 1 t0 50 50 times (climbing step function)
+# X_test_final=X_test%*%pca_transformer_tbu
+# #plot(colMeans(X_test_final))
+# 
+# 
+# 
+# 
+# 
+# pred=predict(model,X_test_final)
+# 
+# cat(sum(y_test==pred))
+# result_df=cbind(y_test,pred,y_test==pred)
+# result_df[result_df[,3]==1,]
+```
+
+1) TRAINING SET
+
+  •	Created a corpus of all the fifty text files belonging to 
+  fifty different authors
+
+  •	Applied transformations associated with lower casing, removal pf numbers, 
+  punctuations and whitespaces
+
+  •	Removed stopwords, that are present in the smart vocabulary list, 
+  from the corpus 
+
+  •	Formulated a Bag of words based Sparse matrix for the training corpus
+
+    o	Number of terms 32241
+    o	Applied sparsity-based filter to remove columns with more than 98.5 
+    sparsity, terms reduced to 2326
+
+
+  •	Computed TFIDF scores for each document for the set of words
+
+  •	Removed columns with sum across column values of TFIDF equal to zero
+
+  •	Dimension changed to rows=2500 col/words=2310
+
+
+  •	Stored the set of words used in training set in a placeholder named 
+  (words_from_trainset) 
+
+  •	Created a ‘pseudo-word-column’ for the words that may surface in test 
+  set but are not present in training set
+    o	Value for pseudo word was determined individually for each document,
+    it was equal to the 0.2 quantile value of all the non-zero tfidf 
+    for words present in the specific row.
+    
+  •	Applied PCA transformation for the entire column sets
+  
+    o	We plotted cumsum of variation_explaination with number of components 
+    and found out that we will require at least 500 words to explain 
+    more than 60 percent of the variation
+
+    o	We stored the feature contribution of each words (2311) in these 
+    500 axes in another placeholder, we will use this to transform our test set
+
+  •	Now we had our predictors, we formulated the target variable using
+  rep function 50 authors repeated 50 times
+
+  •	Then we trained a random forest-based classifier model between pca 
+  predictors and target variables
+
+2) TEST SET
+
+  •	We used similar transformation as applied on the train set to create 
+  TFIDF matrix of the test set
+
+  •	Then we found out the words that are common in the training and 
+  test set using intersection function, it turned out to be 1999
+
+  •	We realise that we can only use contribution of these 1999 and 
+  1 pseudo word feature for creating our 50 test pca predictors
+
+  •	We computed mean of the tfidf scores of the words that are not present
+  in the train set and set it as pseudo variable
+
+  •	We used words present in both sets and pseudo word based variable 
+  to select pca rotation contribution, followingly computed pca scores 
+  for each of the test document
+  
+  Evaluated the test set accuracy
+
+
+
+The approach seems to be appreciable in selecting right number of words for
+each repository.
+Additionally, The model was flexible enough to provide room for new words 
+present in the test set
+
+
+However, the accuracy on the test repository was not that good, so we decided 
+to switch to Naive Bayes based simple composite model.
+
+## Approach 2- Naive Bayes based approach
+
+
+```{r ans e-2, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+# library(tm)
+# 
+# 
+# readerPlain = function(fname){
+#   readPlain(elem=list(content=readLines(fname)), 
+#             id=fname, language='en') }
+# 
+# process_X=function(num,folder){
+#   tbu=paste('data/ReutersC50/C50',folder,'/*',sep='')
+# author_dirs = Sys.glob(tbu)
+# author_dirs = author_dirs[num]
+# file_list = NULL
+# labels = NULL
+# for(author in author_dirs) {
+#   author_name = substring(author, first=29)
+#   files_to_add = Sys.glob(paste0(author, '/*.txt'))
+#   file_list = append(file_list, files_to_add)
+#   labels = append(labels, rep(author_name, length(files_to_add)))
+# }
+# 
+# # Need a more clever regex to get better names here
+# all_docs = lapply(file_list, readerPlain) 
+# names(all_docs) = file_list
+# names(all_docs) = sub('.txt', '', names(all_docs))
+# 
+# my_corpus = Corpus(VectorSource(all_docs))
+# 
+# 
+# # Preprocessing
+# my_corpus = tm_map(my_corpus, content_transformer(tolower)) # make everything lowercase
+# my_corpus = tm_map(my_corpus, content_transformer(removeNumbers)) # remove numbers
+# my_corpus = tm_map(my_corpus, content_transformer(removePunctuation)) # remove punctuation
+# my_corpus = tm_map(my_corpus, content_transformer(stripWhitespace)) ## remove excess white-space
+# my_corpus = tm_map(my_corpus, content_transformer(removeWords), stopwords("SMART"))
+# 
+# DTM = DocumentTermMatrix(my_corpus)
+# DTM = removeSparseTerms(DTM, 0.985)
+# 
+# X = as.matrix(DTM)
+# smooth_count = 1/nrow(X)
+# w_AP = colSums(X + smooth_count)
+# w_AP = w_AP/sum(w_AP)
+# 
+# if (folder=='train'){
+# return(w_AP)}
+# else{
+#   return(X)
+# }
+# }
+# 
+# 
+# tbu=function(xx,temp_df=temp,lt_wrd=bth){
+#   sum(xx*log(temp_df[lt_wrd]))}
+# 
+# W_mat=c()
+# acc=c()
+# for (i in seq(1:50)){
+#   cat('\n',i,'\n')
+#   test=process_X(i,'test')
+#   #Could have created a placeholder, instead trying it with nested loop
+#   
+#   result_wt=c()
+#   
+#   for (j in seq(1:50)){
+#     cat(j)
+#     train=process_X(j,'train')
+#     bth=intersect(colnames(test),names(train))
+#     
+#     temp_r=apply(test[,bth],1,tbu,temp_df=train,lt_wrd=bth)
+#     
+#     result_wt=cbind(result_wt,temp_r)
+#   }
+#   colnames(result_wt)=seq(1:50)
+#   
+#   res_final=apply(result_wt,1,which.min)
+#   
+#   acc=c(acc,(sum(res_final==i)/length(res_final)))
+#     
+#   }
+# 
+# 
+# 
+# plot(acc,type='l')
+# 
+# cat(which.max(acc),max(acc),sep='->')
+# cat(which.min(acc),min(acc),sep='->')
+
+
+library(EBImage)
+img = readImage("Rplot01.png")
+display(img, method = "raster")
+
+
+```
+
+
+
+## Workflow Steps
+
+•	For each test set, we trained 50 different naïve bayes model based on the
+word bag count of each repository of documents belonging 
+to 50 individual writers
+
+•	For all trained model we computed the probability of occurrence
+of each word specific to that repository/folder for individual writer
+
+•	Following, we took intersection of words that occur
+in both the train and the test set
+We had this (50 combinations of intersecting words for each test folder)
+
+•	Subsequently, we computed likelihood using the product of
+log of prior probability and counts of intersecting words.
+
+  o	We obtained 50 likelihood scores from all the trained models
+  for each of the 50 documents present in the repository
+
+  o	We analysed which model gave the highest/max likelihood for each document
+  and assigned the value of that model as predicted folder set for the document 
+
+  o	Then we had a series of 50 documents with their predicted set/author
+
+•	We computed accuracy of for every test folder and stored 
+it in a place holder variable
+
+Finally, we plotted the computed accuracy for each test folder.
+
+We observed a large variance in test accuracy prediction, for example 
+documents associated with author number 21, Karl Penhaul
+were predicted with an accuracy of more than 0.98.
+
+Whereas, files attributed to author 12, Graham Earnshaw was predicted
+with just an accuracy of 0.04
+
+
+
+We pondered over improving the time complexity of the model by creating a 
+placeholder for all the weights/likelihood of words of training corpus.
+
+
+
+\newpage
+
+# ASSOCIATE RULE MINING
+
+
+## Treatment of the data
+
+In this step, we first took the Groceries dataset where each row represented the items bought by a user
+We then created a dataframe to have only 2 columns - user_id and product where user_id is the row number for groceries datasets
+and grouped the products by user_id
+
+```{r ans f-1, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+library(tidyverse)
+library(arules)  # has a big ecosystem of packages built around it
+library(arulesViz)
+library(reshape2)
+
+temp=read.csv('data/groceries.txt',header=FALSE)
+temp=rownames_to_column(temp)
+tt=melt(temp,id.vars = 'rowname')
+tt= tt[tt$value!='',]
+
+tt=tt[,c('rowname','value')]
+colnames(tt)=c('user_id','product')
+
+tt$user_id=strtoi(tt$user_id)
+tt=tt[order(tt$user_id),]
+
+tt$user_id=factor(tt$user_id)
+prod_lt_by_user = split(x=tt$product, f=tt$user_id)
+prod_lt_by_user = lapply(prod_lt_by_user, unique)
+
+```
+
+
+## Summary of the products distribution
+
+```{r ans f-2, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+prod_dist = as(prod_lt_by_user, "transactions")
+summary(prod_dist)
+
+```
+
+
+## OBSERVATIONS
+
+In the summary of the prod_dist, we find that "whole milk" was the highest bought item followed by "other vegetables"
+Also, we found that in majority (around 7079 times), 4 items were bought in a single transaction.
+
+
+## Running the apriori function to get the support, confidence and lift
+
+```{r ans f-3, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+prod_for_users = apriori(prod_dist, 
+                     parameter=list(support=.005, confidence=.1, maxlen=5))
+
+plot(prod_for_users)
+```
+
+
+## OBSERVATIONS
+
+From the scatter plot we found that there are a few items with support less than 0.05 but have a very high confidence above 0.3
+which indicated that there is a good association between these items
+So we decided to further inspect these items.
+
+
+
+## Inspection steps and Observations
+
+We started with the inspection of product combination with confidence above 0.3
+
+```{r ans f-4, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+inspect(subset(prod_for_users, confidence > 0.3))
+```
+
+
+Upon inspection, we found that "onions" and "other vegetables" have the highest lift indicating a strong tendency of other vegetables being bought with onions
+Same is the case with "root vegetables" and "other vegetables" or vegetables along with milk which have lift close to 3
+Among these, we find the highest count of 625 for the combination of "other vegetables" and "whole milk".
+
+
+Next, we inspect the product combinations with count > 150 and lift > 1.5
+
+```{r ans f-5, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+inspect(subset(prod_for_users, count > 150 & lift > 1.5 ))
+```
+
+Upon putting the above condition of count and lift, we find that "pip fruit" and "tropical fruit" have a lift close to 4 indicating high association between them
+
+
+We find that people generally buy whole milk and other vegetables together upon inspecting for lift > 1 and support > 0.03
+
+```{r ans f-6, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+inspect(subset(prod_for_users, subset=lift > 1 & support > 0.03))
+```
+
+
+Upon putting the condition of support > 0.10, we find that these are values for individual items like "soda" or "rolls/buns"
+
+```{r ans f-7, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+inspect(subset(prod_for_users, subset = support > 0.10))
+```
+
+
+
+## NETWORK GRAPHS
+
+
+We then plot the network graph to see the association between the different items bought.
+
+```{r ans f-8, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+sub1 = subset(prod_for_users, subset=confidence > 0.01 & support > 0.005)
+plot(head(sub1, 100, by='lift'), method='graph')
+
+```
+
+## OBSERVATIONS
+
+1)We get to see that other vegetables and whole milk are the items which are highest associated with other items i.e. they have the highest network.
+
+2) Also, we find bottled water, beer, soda, chocolate and juice belong to a completely different cluster indicating they are not associated with vegetables or whole milk or other regular items
+
+
+
+## GEPHI PLOTS
+
+Finally, we use the Gephi software to visualize the association between the items.
+
+```{r ans f-9, include=TRUE, echo=FALSE, fig.height=10, fig.width=15}
+
+#install.packages("BiocManager") 
+#BiocManager::install("EBImage")
+library(EBImage)
+img = readImage("Groceries.png")
+display(img, method = "raster")
+img2 = readImage("grocery_color_degree_size_betweeness.png")
+display(img2, method = "raster")
+```
+
+
+## OBSERVATIONS
+
+1) Here we see that "other vegetables" and "whole milk" have the biggest font followed by "root vegetables", "yogurt", "sausage" and others.
+
+2) The font of an item is proportional to the degree of the node which in turn is related to the association of that item.
+The Gephi plot also validates the earlier network plot indicating that vegetables and whole milk have highest association and are often bought with other items
+
+3) In the second Gephi plot we find that there are 2 clusters validating our earlier inference that bottled water, beer, soda are not associated with the regular items and are mostly bought separately.
